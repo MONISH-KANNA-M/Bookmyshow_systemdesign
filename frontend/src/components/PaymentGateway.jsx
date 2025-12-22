@@ -12,6 +12,7 @@ export default function PaymentGateway({
   const [error, setError] = useState("");
   const [bookingId, setBookingId] = useState(null);
   const [paymentId, setPaymentId] = useState(null);
+  const [ticketNumber, setTicketNumber] = useState(null);
   const [paymentStep, setPaymentStep] = useState("order"); // order -> verify -> done
 
   const amount = seats.length * 200; // base price per seat
@@ -29,6 +30,7 @@ export default function PaymentGateway({
       // Step 1: Create booking (will reserve seats)
       const bookingResp = await createBooking({ userId, showId, holdId });
       setBookingId(bookingResp.bookingId);
+      setTicketNumber(bookingResp.ticketNumber);
 
       // Step 2: Create payment order
       const orderResp = await createPaymentOrder(bookingResp.bookingId, amount);
@@ -51,8 +53,8 @@ export default function PaymentGateway({
       await verifyPayment(paymentId, mockPaymentId);
       setPaymentStep("done");
       setLoading(false);
-      // Call success callback
-      onPaymentSuccess(paymentId, bookingId);
+      // Call success callback with ticket number
+      onPaymentSuccess(paymentId, bookingId, ticketNumber);
     } catch (e) {
       setError(e.message);
       setLoading(false);

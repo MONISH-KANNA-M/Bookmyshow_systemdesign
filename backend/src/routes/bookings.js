@@ -3,11 +3,15 @@ import mongoose from "mongoose";
 import { SeatHold } from "../models/SeatHold.js";
 import { SeatReservation } from "../models/SeatReservation.js";
 import { Booking } from "../models/Booking.js";
+import { Show } from "../models/Show.js";
+import { Movie } from "../models/Movie.js";
+import { Screen } from "../models/Screen.js";
+import { Theatre } from "../models/Theatre.js";
 import { emitShowEvent } from "../utils/io.js";
+import { generateTicketNumber } from "../utils/ticketGenerator.js";
 
 const router = Router();
 
-// POST /api/bookings { userId, showId, holdId }
 router.post("/", async (req, res) => {
   const { userId, showId, holdId } = req.body || {};
   if (
@@ -18,14 +22,12 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Invalid payload" });
   }
 
-  // Check if replica set is available for transactions
   const useTransactions = process.env.MONGODB_URI?.includes("replicaSet");
 
   try {
     let resultBookingId = null;
 
     if (useTransactions) {
-      // Use transactions if replica set is available
       const session = await mongoose.startSession();
       try {
         await session.withTransaction(
@@ -45,7 +47,6 @@ router.post("/", async (req, res) => {
 
             const seats = hold.seats;
 
-            // Try to reserve all seats (hard guarantee via unique index)
             await SeatReservation.insertMany(
               seats.map((seat) => ({ showId, seat })),
               { session }
@@ -59,8 +60,9 @@ router.post("/", async (req, res) => {
             });
 
             const amount = seats.length * 200;
+            const ticketNumber = generateTicketNumber();
             const booking = await Booking.create(
-              [{ userId, showId, seats, amount }],
+              [{ userId, showId, seats, amount, ticketNumber }],
               { session }
             );
             const bookingId = booking[0]._id;
@@ -80,7 +82,6 @@ router.post("/", async (req, res) => {
         session.endSession();
       }
     } else {
-      // Fallback: No transactions (for standalone MongoDB)
       const hold = await SeatHold.findById(holdId);
       if (!hold) return res.status(404).json({ error: "Hold not found" });
       if (
@@ -95,7 +96,6 @@ router.post("/", async (req, res) => {
 
       const seats = hold.seats;
 
-      // Try to reserve all seats
       try {
         await SeatReservation.insertMany(
           seats.map((seat) => ({ showId, seat }))
@@ -108,7 +108,14 @@ router.post("/", async (req, res) => {
       }
 
       const amount = seats.length * 200;
-      const booking = await Booking.create({ userId, showId, seats, amount });
+      const ticketNumber = generateTicketNumber();
+      const booking = await Booking.create({
+        userId,
+        showId,
+        seats,
+        amount,
+        ticketNumber,
+      });
       resultBookingId = booking._id;
 
       await SeatReservation.updateMany(
@@ -123,10 +130,71 @@ router.post("/", async (req, res) => {
       showId,
       bookingId: resultBookingId,
     });
-    return res.status(201).json({ bookingId: resultBookingId });
+
+    // Fetch the complete booking with ticket number
+    const booking = await Booking.findById(resultBookingId).lean();
+
+    return res.status(201).json({
+      bookingId: resultBookingId,
+      ticketNumber: booking.ticketNumber,
+      message: "Booking confirmed! Your ticket has been generated.",
+    });
   } catch (e) {
     const status = e.status || 500;
     return res.status(status).json({ error: e.message || "Booking failed" });
+  }
+});
+
+// GET /api/bookings/:bookingId/ticket - Get ticket details
+router.get("/:bookingId/ticket", async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+
+    if (!mongoose.isValidObjectId(bookingId)) {
+      return res.status(400).json({ error: "Invalid booking ID" });
+    }
+
+    const booking = await Booking.findById(bookingId)
+      .populate({
+        path: "showId",
+        populate: [
+          { path: "movieId" },
+          {
+            path: "screenId",
+            populate: { path: "theatreId" },
+          },
+        ],
+      })
+      .populate("userId", "name email")
+      .lean();
+
+    if (!booking) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+
+    // Format ticket details
+    const ticket = {
+      ticketNumber: booking.ticketNumber,
+      bookingId: booking._id,
+      status: booking.status,
+      movieTitle: booking.showId.movieId.title,
+      language: booking.showId.movieId.language,
+      certificate: booking.showId.movieId.certificate,
+      duration: booking.showId.movieId.durationMins,
+      theatre: booking.showId.screenId.theatreId.name,
+      city: booking.showId.screenId.theatreId.city,
+      screen: booking.showId.screenId.name,
+      showTime: booking.showId.startTime,
+      seats: booking.seats,
+      amount: booking.amount,
+      bookedAt: booking.createdAt,
+      customerName: booking.userId.name,
+      customerEmail: booking.userId.email,
+    };
+
+    res.json(ticket);
+  } catch (e) {
+    res.status(500).json({ error: e.message || "Failed to fetch ticket" });
   }
 });
 

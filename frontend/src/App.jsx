@@ -18,6 +18,7 @@ export default function App() {
   const [holdId, setHoldId] = useState(null);
   const [bookingId, setBookingId] = useState(null);
   const [paymentId, setPaymentId] = useState(null);
+  const [ticketNumber, setTicketNumber] = useState(null);
 
   // Check if user is already logged in
   useEffect(() => {
@@ -51,9 +52,10 @@ export default function App() {
     setStep("payment");
   };
 
-  const handlePaymentSuccess = (payId, bId) => {
+  const handlePaymentSuccess = (payId, bId, tNum) => {
     setPaymentId(payId);
     setBookingId(bId);
+    setTicketNumber(tNum);
     setStep("confirm");
   };
 
@@ -66,6 +68,7 @@ export default function App() {
     setHoldId(null);
     setBookingId(null);
     setPaymentId(null);
+    setTicketNumber(null);
   };
 
   const handleLogout = () => {
@@ -81,6 +84,7 @@ export default function App() {
     setHoldId(null);
     setBookingId(null);
     setPaymentId(null);
+    setTicketNumber(null);
   };
 
   const handleAuthSuccess = (userData) => {
@@ -215,6 +219,7 @@ export default function App() {
             seats={selectedSeats}
             bookingId={bookingId}
             paymentId={paymentId}
+            ticketNumber={ticketNumber}
             onRestart={handleRestart}
           />
         )}

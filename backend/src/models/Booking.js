@@ -14,6 +14,12 @@ const bookingSchema = new mongoose.Schema(
     },
     seats: { type: [String], required: true },
     amount: { type: Number, required: true },
+    ticketNumber: { type: String, unique: true, required: true },
+    status: {
+      type: String,
+      enum: ["confirmed", "cancelled"],
+      default: "confirmed",
+    },
   },
   { timestamps: true }
 );
